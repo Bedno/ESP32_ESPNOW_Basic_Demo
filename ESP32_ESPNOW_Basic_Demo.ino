@@ -2,7 +2,7 @@
 // Andrew Bedno - AndrewBedno.com
 // Compile options: Board: ESP32 Dev Module.
 
-const String Version = "0.14";
+const String Version = "0.15";
 const int Analyze_None = 0;  // Fastest for production compile.
 const int Analyze_Basic = 1;  // Enable basic analysis messages.
 const int Analyze_Verbose = 2;  // Show somewhat more details.
@@ -69,11 +69,18 @@ float Battery_Voltage;
 float Battery_Read_prev = 0.0;
 int Battery_Y = int(Bottom_Y / 2);  // Vertical screen position of power readout.  Middle at boot, bottom in RxTx modes.
 
-int Main_Mode = 0;
 long UpSeconds = 0;
 long UpSeconds_prev = 0;
 long SubTime = 0;
 bool Busy = false;
+
+const int Mode_StartMenu = 0;
+const int Mode_Receive = 1;
+const int Mode_Receiving = -1;
+const int Mode_Send = 2;
+const int Mode_Sending= -2;
+const int Mode_Error = 99;
+int Main_Mode = Mode_StartMenu;
 
 // === WI-FI ===
 
@@ -222,7 +229,7 @@ void setup()
 void loop() {
 
    // Set device as receiver.
-  if (Main_Mode == 1) {
+  if (Main_Mode == Mode_Receive) {
     Serial.printf("Receiving...\n");
     tft.fillScreen(TFT_BLACK);  // Clear screen.
     tft.fillRect(0, 0, TFT_Wid, 32, TFT_YELLOW);  // Head bar.
@@ -237,16 +244,16 @@ void loop() {
     if (esp_now_init() != ESP_OK) { // Init ESP-NOW
       tft.setCursor(0, 25);  tft.setTextColor(TFT_RED);
       tft.println("ESPNow init failed");
-      Main_Mode = 99;
+      Main_Mode = Mode_Error;
     } else {
       // register callback to get recv packer info
       esp_now_register_recv_cb(OnDataRecv);
-      Main_Mode = -1;
+      Main_Mode = Mode_Receiving;
     }
   }
   
   // Set device as transmitter.
-  if (Main_Mode == 2) {
+  if (Main_Mode == Mode_Send) {
     Serial.printf("Sending...\n");
     tft.fillScreen(TFT_BLACK);  // Clear screen.
     tft.fillRect(0, 0, TFT_Wid, 32, TFT_YELLOW);  // Head bar.
@@ -261,7 +268,7 @@ void loop() {
     if (esp_now_init() != ESP_OK) { // Init ESP-NOW
       tft.setCursor(0, 25);  tft.setTextColor(TFT_RED);
       tft.println("ESPNow init failed");
-      Main_Mode = 99;
+      Main_Mode = Mode_Error;
     } else {
       // register callback to get recv packer info
       esp_now_register_send_cb(OnDataSent);
@@ -273,22 +280,22 @@ void loop() {
       if (esp_now_add_peer(&peerInfo) != ESP_OK){
         tft.setCursor(0, 25);  tft.setTextColor(TFT_RED);
         tft.println("ESPNow peer failed");
-        Main_Mode = 99;
+        Main_Mode = Mode_Error;
       } else {
-        Main_Mode = -2;
+        Main_Mode = Mode_Sending;
       }
     }
   }
 
   // Service transmitter.
-  if ( (Main_Mode == -2) && (! Busy) ) {
+  if ( (Main_Mode == Mode_Sending) && (! Busy) ) {
     MsgNum_out++;
     ESPNow_Packet.MsgNum_Data = MsgNum_out;
     esp_err_t result = esp_now_send(0, (uint8_t *) &ESPNow_Packet, sizeof(ESPNow_Packet_struct));
   }
 
   // Log uptime once a minute.
-  if ( ((Main_Mode == -1) || (Main_Mode == -2) ) && (! Busy) ) {
+  if ( ((Main_Mode == Mode_Receiving) || (Main_Mode == Mode_Sending) ) && (! Busy) ) {
     UpSeconds++;
     if ( (UpSeconds - UpSeconds_prev) > 60) {
       Memory.putLong("UpSeconds", UpSeconds);
@@ -299,7 +306,7 @@ void loop() {
   for (SubTime=0; SubTime < 10; SubTime++) {
     if (! Busy) {
       // Service receiver.
-      if (Main_Mode == -1) {
+      if (Main_Mode == Mode_Receiving) {
         if (MsgNum_Rcvd_Timer_DeciCnt < 0) {  // Detect packet receive timeouts.
           MsgNum_Rcvd_ShouldBe++;
           MsgNum_Missed++;
@@ -310,10 +317,10 @@ void loop() {
         }
       }
       // Wait for button pressed.
-      if (Main_Mode == 0) {
-        if (digitalRead(BUTTON_2_PIN) < 1) { Main_Mode = 2; }
-        if (digitalRead(BUTTON_1_PIN) < 1) { Main_Mode = 1; }
-        if (Main_Mode != 0) { tft.fillScreen(TFT_BLACK); }
+      if (Main_Mode == Mode_StartMenu) {
+        if (digitalRead(BUTTON_2_PIN) < 1) { Main_Mode = Mode_Send; }
+        if (digitalRead(BUTTON_1_PIN) < 1) { Main_Mode = Mode_Receive; }
+        if (Main_Mode != Mode_StartMenu) { tft.fillScreen(TFT_BLACK); }
       }
       // Both buttons clears uptime.
       if ( (digitalRead(BUTTON_2_PIN) < 1) && (digitalRead(BUTTON_1_PIN) < 1) ) {
