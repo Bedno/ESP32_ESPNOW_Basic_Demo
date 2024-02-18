@@ -1,5 +1,6 @@
 # ESP32_ESPNOW_Basic_Demo
 Basic demo of Wi-Fi communication between ESP32s using their "ESPNOW" protocol.
+Sepcifically targetted for the "TTGO" type module, which includes a tiny color screen.
 
 Sends / Receives packets between two devices with various error checking and display.
 Demonstrates use of ESP-NOW protocol which implements low-latency Wi-Fi communications without need for Hub or SSID,
